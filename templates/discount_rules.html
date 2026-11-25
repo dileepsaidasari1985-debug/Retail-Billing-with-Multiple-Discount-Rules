@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Discount Rules &amp; Concession Limit{% endblock %}
+{% block page_title %}Threshold Discount Rules &amp; Maximum Concession{% endblock %}
+{% block page_subtitle %}Configure purchase subtotal slabs, discount percentages, maximum per-invoice concession cap, and store profile{% endblock %}
+
+{% block content %}
+<div class="split-grid">
+  <!-- Store Settings & Maximum Concession Limit -->
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Maximum Concession Limit &amp; Store Settings</h2>
+        <p class="card-subtitle">Actual Discount = min(Threshold Discount, Maximum Concession Limit)</p>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('discount_rules_page') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="update_settings">
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="max_concession_limit">Maximum Discount Limit per Invoice (₹) <span aria-hidden="true">*</span></label>
+          <input type="number" id="max_concession_limit" name="max_concession_limit" value="{{ "%.2f"|format(settings.max_concession_limit) }}" step="0.01" min="0" required>
+          <span class="field-hint">Default academic cap is ₹1,000.00 per invoice.</span>
+        </div>
+
+        <div class="field">
+          <label for="store_name">Store Name <span aria-hidden="true">*</span></label>
+          <input type="text" id="store_name" name="store_name" value="{{ settings.store_name }}" required>
+        </div>
+
+        <div class="field">
+          <label for="store_address">Store Address <span aria-hidden="true">*</span></label>
+          <input type="text" id="store_address" name="store_address" value="{{ settings.store_address }}" required>
+        </div>
+
+        <div class="field">
+          <label for="store_phone">Store Phone</label>
+          <input type="text" id="store_phone" name="store_phone" value="{{ settings.store_phone }}">
+        </div>
+
+        <div class="field">
+          <label for="store_gstin">Store Tax Registration ID</label>
+          <input type="text" id="store_gstin" name="store_gstin" value="{{ settings.store_gstin }}">
+        </div>
+      </div>
+
+      <div class="topbar-actions" style="margin-block-start: 1.2rem;">
+        <button type="submit" class="btn btn-primary">Save Settings &amp; Concession Limit</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Add New Discount Slab -->
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Add New Discount Threshold Tier</h2>
+        <p class="card-subtitle">Leave Max Subtotal blank for an open-ended top slab (e.g., ₹5,000+)</p>
+      </div>
+      <form method="POST" action="{{ url_for('discount_rules_page') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="reset">
+        <button type="submit" class="btn btn-outline btn-sm">Reset All to Defaults</button>
+      </form>
+    </div>
+
+    <form method="POST" action="{{ url_for('discount_rules_page') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_rule">
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="new_min">Minimum Subtotal (₹) <span aria-hidden="true">*</span></label>
+          <input type="number" id="new_min" name="min_amount" step="0.01" min="0" placeholder="e.g., 7500" required>
+        </div>
+        <div class="field">
+          <label for="new_max">Maximum Subtotal (₹)</label>
+          <input type="number" id="new_max" name="max_amount" step="0.01" min="0" placeholder="Blank = No limit">
+        </div>
+        <div class="field">
+          <label for="new_pct">Discount Percentage (%) <span aria-hidden="true">*</span></label>
+          <input type="number" id="new_pct" name="discount_percent" step="0.1" min="0" max="100" placeholder="e.g., 20" required>
+        </div>
+        <div class="field">
+          <label for="new_label">Tier Label</label>
+          <input type="text" id="new_label" name="rule_label" placeholder="e.g., ₹7,500+ (20% Off)">
+        </div>
+      </div>
+
+      <div class="topbar-actions" style="margin-block-start: 1.2rem;">
+        <button type="submit" class="btn btn-orange">+ Add Discount Rule</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<!-- Existing Threshold Discount Rules Table -->
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Configured Threshold Discount Rules</h2>
+      <p class="card-subtitle">Evaluated in Python by <code>calculate_threshold_discount(subtotal, discount_rules)</code></p>
+    </div>
+  </div>
+
+  <div tabindex="0" role="region" aria-labelledby="discount-rules-caption" class="table-wrapper responsive-stack">
+    <table>
+      <caption id="discount-rules-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Editable purchase threshold discount tiers</caption>
+      <thead>
+        <tr>
+          <th>Min Subtotal (₹)</th>
+          <th>Max Subtotal (₹)</th>
+          <th>Discount (%)</th>
+          <th>Rule Label</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rule in discount_rules %}
+        <tr>
+          <td data-label="Min Subtotal">
+            <form id="update-rule-{{ rule.id }}" method="POST" action="{{ url_for('discount_rules_page') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="update_rule">
+              <input type="hidden" name="rule_id" value="{{ rule.id }}">
+            </form>
+            <input type="number" form="update-rule-{{ rule.id }}" name="min_amount" value="{{ "%.2f"|format(rule.min_amount) }}" step="0.01" min="0" aria-label="Minimum subtotal for rule {{ rule.id }}" required>
+          </td>
+          <td data-label="Max Subtotal">
+            <input type="number" form="update-rule-{{ rule.id }}" name="max_amount" value="{{ "%.2f"|format(rule.max_amount) if rule.max_amount is not none else '' }}" step="0.01" min="0" placeholder="No Limit" aria-label="Maximum subtotal for rule {{ rule.id }}">
+          </td>
+          <td data-label="Discount (%)">
+            <input type="number" form="update-rule-{{ rule.id }}" name="discount_percent" value="{{ "%.1f"|format(rule.discount_percent) }}" step="0.1" min="0" max="100" aria-label="Discount percent for rule {{ rule.id }}" required>
+          </td>
+          <td data-label="Rule Label">
+            <input type="text" form="update-rule-{{ rule.id }}" name="rule_label" value="{{ rule.rule_label }}" aria-label="Label for rule {{ rule.id }}">
+          </td>
+          <td data-label="Actions">
+            <div class="topbar-actions">
+              <button type="submit" form="update-rule-{{ rule.id }}" class="btn btn-primary btn-sm">Save</button>
+              <form method="POST" action="{{ url_for('discount_rules_page') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete_rule">
+                <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

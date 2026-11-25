@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Smart Retail Billing Dashboard{% endblock %}
+{% block page_subtitle %}Live inventory, threshold discounts, concession savings, and tax analytics from SQLite{% endblock %}
+
+{% block content %}
+<section class="kpi-grid" aria-label="Key performance metrics">
+  <article class="kpi-card">
+    <div class="kpi-label">Total Sales Revenue</div>
+    <div class="kpi-value">{{ format_inr(stats.total_sales) }}</div>
+    <div class="kpi-meta">{{ stats.total_invoices }} completed invoices</div>
+  </article>
+
+  <article class="kpi-card is-navy">
+    <div class="kpi-label">Today's Sales</div>
+    <div class="kpi-value">{{ format_inr(stats.today_sales) }}</div>
+    <div class="kpi-meta">{{ stats.today_invoices }} invoice(s) billed today</div>
+  </article>
+
+  <article class="kpi-card is-orange">
+    <div class="kpi-label">Total Discounts Given</div>
+    <div class="kpi-value">{{ format_inr(stats.total_discounts) }}</div>
+    <div class="kpi-meta">{{ stats.capped_invoices }} capped at {{ format_inr(store_settings.max_concession_limit) }} limit</div>
+  </article>
+
+  <article class="kpi-card is-green">
+    <div class="kpi-label">Total Tax Collected</div>
+    <div class="kpi-value">{{ format_inr(stats.total_tax) }}</div>
+    <div class="kpi-meta">Category-specific rates applied</div>
+  </article>
+
+  <article class="kpi-card">
+    <div class="kpi-label">Total Products</div>
+    <div class="kpi-value">{{ stats.total_products }}</div>
+    <div class="kpi-meta">{{ stats.low_stock_count }} item(s) at low stock (&le; 10)</div>
+  </article>
+
+  <article class="kpi-card is-navy">
+    <div class="kpi-label">Average Invoice</div>
+    <div class="kpi-value">{{ format_inr(stats.avg_invoice) }}</div>
+    <div class="kpi-meta">Highest bill: {{ format_inr(stats.highest_invoice) }}</div>
+  </article>
+</section>
+
+<section class="card" aria-label="Quick Actions">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Quick Billing &amp; Management Actions</h2>
+      <p class="card-subtitle">Start a multi-product POS checkout or configure discount and tax rules</p>
+    </div>
+    {% if missing_samples > 0 %}
+    <form method="POST" action="{{ url_for('load_samples_route') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+      <button type="submit" class="btn btn-outline btn-sm">Load {{ missing_samples }} Missing Sample Product(s)</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="topbar-actions">
+    <a href="{{ url_for('billing_counter_page') }}" class="btn btn-primary">Open Billing Counter (POS)</a>
+    <a href="{{ url_for('products_page') }}" class="btn btn-navy">Manage Products</a>
+    <a href="{{ url_for('discount_rules_page') }}" class="btn btn-orange">Configure Threshold Discounts</a>
+    <a href="{{ url_for('tax_rules_page') }}" class="btn btn-outline">Configure Category Taxes</a>
+    <a href="{{ url_for('reports_page') }}" class="btn btn-green">View Sales &amp; CSV Reports</a>
+  </div>
+</section>
+
+<div class="split-grid">
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Active Threshold Discount Rules</h2>
+        <p class="card-subtitle">Max concession cap: <strong>{{ format_inr(store_settings.max_concession_limit) }}</strong> per invoice</p>
+      </div>
+      <a href="{{ url_for('discount_rules_page') }}" class="btn btn-outline btn-sm">Edit Rules</a>
+    </div>
+    <div tabindex="0" role="region" aria-labelledby="dash-discount-cap" class="table-wrapper responsive-stack">
+      <table>
+        <caption id="dash-discount-cap" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Configured threshold discount tiers</caption>
+        <thead>
+          <tr>
+            <th>Purchase Subtotal Slab</th>
+            <th class="num">Discount %</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in discount_rules %}
+          <tr>
+            <th data-label="Purchase Slab">
+              {% if rule.max_amount is none %}
+                {{ format_inr(rule.min_amount) }} and above
+              {% else %}
+                {{ format_inr(rule.min_amount) }} – {{ format_inr(rule.max_amount) }}
+              {% endif %}
+            </th>
+            <td class="num" data-label="Discount %">
+              <span class="badge {% if rule.discount_percent > 0 %}badge-orange{% else %}badge-navy{% endif %}">
+                {{ "%.1f"|format(rule.discount_percent) }}%
+              </span>
+            </td>
+            <td data-label="Description">{{ rule.rule_label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Discount &amp; Concession Statistics</h2>
+        <p class="card-subtitle">Tier distribution across all stored invoices</p>
+      </div>
+      <a href="{{ url_for('reports_page') }}" class="btn btn-outline btn-sm">Full Report</a>
+    </div>
+    <div class="summary-box" style="margin-block-end: 1rem;">
+      <div class="summary-row">
+        <span>Gross Pre-Discount Sales</span>
+        <strong>{{ format_inr(stats.gross_subtotal) }}</strong>
+      </div>
+      <div class="summary-row is-savings">
+        <span>Customer Savings Delivered</span>
+        <span>{{ format_inr(stats.total_discounts) }}</span>
+      </div>
+      <div class="summary-row is-discount">
+        <span>Protected by Concession Cap</span>
+        <span>{{ format_inr(stats.concession_saved_by_cap) }} ({{ stats.capped_invoices }} bills)</span>
+      </div>
+    </div>
+
+    {% if stats.discount_tier_stats %}
+    <div tabindex="0" role="region" aria-labelledby="dash-tier-stats" class="table-wrapper">
+      <table>
+        <caption id="dash-tier-stats" class="card-subtitle" style="padding: 0.5rem 0.85rem; text-align: start;">Invoices by applied discount tier</caption>
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th class="num">Invoices</th>
+            <th class="num">Discounts Given</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.discount_tier_stats %}
+          <tr>
+            <th>{{ row.tier_label }}</th>
+            <td class="num">{{ row.invoice_count }}</td>
+            <td class="num">{{ format_inr(row.total_discount) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<div class="split-grid">
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Category Sales Performance</h2>
+        <p class="card-subtitle">Relative net revenue across retail categories</p>
+      </div>
+      <a href="{{ url_for('reports_page') }}" class="btn btn-outline btn-sm">Detailed Breakdown</a>
+    </div>
+    {% if stats.category_breakdown %}
+    <div class="bar-chart-list">
+      {% for cat in stats.category_breakdown %}
+      <div class="bar-row">
+        <div class="bar-row-head">
+          <span><strong>{{ cat.category }}</strong> ({{ cat.units_sold }} units)</span>
+          <span><strong>{{ format_inr(cat.net_sales) }}</strong> <span class="field-hint">Tax: {{ format_inr(cat.tax_collected) }}</span></span>
+        </div>
+        <div class="bar-track" aria-hidden="true">
+          <div class="bar-fill" style="inline-size: {{ cat.share_percent }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="card-subtitle">No category sales recorded yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Low-Stock Inventory Alerts</h2>
+        <p class="card-subtitle">Products with 10 or fewer units remaining</p>
+      </div>
+      <a href="{{ url_for('products_page', sort='stock_asc') }}" class="btn btn-outline btn-sm">Manage Stock</a>
+    </div>
+    {% if low_stock_products %}
+    <div tabindex="0" role="region" aria-label="Low stock alerts" class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th class="num">Stock</th>
+            <th>Quick Restock</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lp in low_stock_products %}
+          <tr>
+            <th>
+              <div>{{ lp.product_name }}</div>
+              <div class="field-hint">{{ lp.product_code }}</div>
+            </th>
+            <td class="num"><span class="badge {% if lp.available_stock == 0 %}badge-red{% else %}badge-orange{% endif %}">{{ lp.available_stock }}</span></td>
+            <td>
+              <form method="POST" action="{{ url_for('restock_product_route', product_id=lp.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="add_units" value="10">
+                <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+                <button type="submit" class="btn btn-outline btn-sm">+10 Stock</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="summary-box">
+      <p style="margin: 0; color: var(--green-700); font-weight: 600;">All catalog products are well stocked (above 10 units).</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Recent Invoices</h2>
+      <p class="card-subtitle">Latest finalized retail bills saved in SQLite</p>
+    </div>
+    <a href="{{ url_for('billing_history_page') }}" class="btn btn-outline btn-sm">View All Invoices</a>
+  </div>
+
+  {% if stats.recent_invoices %}
+  <div tabindex="0" role="region" aria-labelledby="recent-inv-caption" class="table-wrapper responsive-stack">
+    <table>
+      <caption id="recent-inv-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Most recent 6 invoices</caption>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Date &amp; Time</th>
+          <th>Customer</th>
+          <th class="num">Subtotal</th>
+          <th class="num">Discount</th>
+          <th class="num">Tax</th>
+          <th class="num">Final Payable</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in stats.recent_invoices %}
+        <tr>
+          <th data-label="Invoice #"><a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></th>
+          <td data-label="Date &amp; Time">{{ inv.invoice_datetime }}</td>
+          <td data-label="Customer">{{ inv.customer_name }}</td>
+          <td class="num" data-label="Subtotal">{{ format_inr(inv.purchase_subtotal) }}</td>
+          <td class="num" data-label="Discount">
+            <span class="badge badge-green">-{{ format_inr(inv.final_discount) }}</span>
+            {% if inv.concession_capped %}
+              <span class="badge badge-orange">Capped</span>
+            {% endif %}
+          </td>
+          <td class="num" data-label="Tax">{{ format_inr(inv.total_tax) }}</td>
+          <td class="num" data-label="Final Payable"><strong>{{ format_inr(inv.final_payable) }}</strong></td>
+          <td data-label="Actions">
+            <a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}" class="btn btn-outline btn-sm">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="card-subtitle">No invoices recorded yet. Open the Billing Counter to create your first invoice.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Product Management{% endblock %}
+{% block page_title %}Product Catalog &amp; Inventory{% endblock %}
+{% block page_subtitle %}Manage products, unique product codes, category tax tags, discount eligibility, and stock{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Search &amp; Filter Catalog</h2>
+      <p class="card-subtitle">{{ products|length }} product(s) matched</p>
+    </div>
+    <div class="topbar-actions">
+      {% if missing_samples > 0 %}
+      <form method="POST" action="{{ url_for('load_samples_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ url_for('products_page') }}">
+        <button type="submit" class="btn btn-outline btn-sm">Load Sample Products ({{ missing_samples }})</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('add_product_page') }}" class="btn btn-primary btn-sm">+ Add New Product</a>
+    </div>
+  </div>
+
+  <search>
+    <form method="GET" action="{{ url_for('products_page') }}" class="filter-bar">
+      <div class="field" style="flex: 1 1 220px;">
+        <label for="prod-search">Search Name or Code</label>
+        <input type="search" id="prod-search" name="q" value="{{ search }}" placeholder="e.g., Basmati or GRO-101">
+      </div>
+      <div class="field" style="flex: 0 1 190px;">
+        <label for="prod-category">Category</label>
+        <select id="prod-category" name="category">
+          <option value="">All Categories</option>
+          {% for cat in categories %}
+            <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field" style="flex: 0 1 190px;">
+        <label for="prod-sort">Sort By</label>
+        <select id="prod-sort" name="sort">
+          <option value="name_asc" {% if sort_by == 'name_asc' %}selected{% endif %}>Name (A–Z)</option>
+          <option value="price_asc" {% if sort_by == 'price_asc' %}selected{% endif %}>Price (Low to High)</option>
+          <option value="price_desc" {% if sort_by == 'price_desc' %}selected{% endif %}>Price (High to Low)</option>
+          <option value="stock_asc" {% if sort_by == 'stock_asc' %}selected{% endif %}>Lowest Stock First</option>
+          <option value="newest" {% if sort_by == 'newest' %}selected{% endif %}>Recently Added</option>
+        </select>
+      </div>
+      <div class="topbar-actions">
+        <button type="submit" class="btn btn-navy">Apply</button>
+        <a href="{{ url_for('products_page') }}" class="btn btn-outline">Reset</a>
+      </div>
+    </form>
+  </search>
+</section>
+
+<section class="card">
+  {% if products %}
+  <div tabindex="0" role="region" aria-labelledby="products-table-caption" class="table-wrapper responsive-stack">
+    <table>
+      <caption id="products-table-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Retail product inventory list</caption>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Code</th>
+          <th>Product Name</th>
+          <th>Category</th>
+          <th class="num">Unit Price</th>
+          <th class="num">Stock</th>
+          <th class="num">Tax Rate</th>
+          <th>Discount Eligible</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td data-label="ID">#{{ p.id }}</td>
+          <td data-label="Code"><span class="badge badge-navy">{{ p.product_code }}</span></td>
+          <th data-label="Product Name">{{ p.product_name }}</th>
+          <td data-label="Category"><span class="badge badge-blue">{{ p.category }}</span></td>
+          <td class="num" data-label="Unit Price"><strong>{{ format_inr(p.unit_price) }}</strong></td>
+          <td class="num" data-label="Stock">
+            {% if p.available_stock == 0 %}
+              <span class="badge badge-red">Out of Stock (0)</span>
+            {% elif p.available_stock <= 10 %}
+              <span class="badge badge-orange">{{ p.available_stock }} (Low)</span>
+            {% else %}
+              <span class="badge badge-green">{{ p.available_stock }} units</span>
+            {% endif %}
+          </td>
+          <td class="num" data-label="Tax Rate">{{ "%.1f"|format(tax_map.get(p.category, 0.0)) }}%</td>
+          <td data-label="Discount Eligible">
+            {% if p.discount_eligible %}
+              <span class="badge badge-green">Eligible</span>
+            {% else %}
+              <span class="badge badge-navy">Excluded</span>
+            {% endif %}
+          </td>
+          <td data-label="Actions">
+            <div class="topbar-actions">
+              <form method="POST" action="{{ url_for('restock_product_route', product_id=p.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="add_units" value="10">
+                <input type="hidden" name="next" value="{{ url_for('products_page', q=search, category=selected_category, sort=sort_by) }}">
+                <button type="submit" class="btn btn-outline btn-sm" title="Add 10 units to stock">+10</button>
+              </form>
+              <a href="{{ url_for('edit_product_page', product_id=p.id) }}" class="btn btn-outline btn-sm">Edit</a>
+              <button
+                type="button"
+                class="btn btn-danger btn-sm"
+                data-delete-url="{{ url_for('delete_product_route', product_id=p.id) }}"
+                data-delete-label="{{ p.product_name }} ({{ p.product_code }})"
+              >Delete</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="card-subtitle">No products matched your search criteria. Try clearing filters or adding a new product.</p>
+  {% endif %}
+</section>
+
+<!-- Accessible Native Modal Confirmation Dialog -->
+<dialog id="delete-confirm-dialog" class="confirm-dialog" aria-labelledby="delete-dialog-title">
+  <h1 id="delete-dialog-title">Confirm Product Deletion</h1>
+  <p>Are you sure you want to permanently remove <strong id="delete-item-name">this product</strong> from the active catalog? Past invoices remain preserved.</p>
+  <form id="delete-confirm-form" method="POST" action="">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="dialog-actions">
+      <button type="button" id="delete-cancel-btn" class="btn btn-outline" autofocus>Cancel</button>
+      <button type="submit" class="btn btn-danger">Delete Product</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

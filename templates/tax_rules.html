@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Category Tax Rules{% endblock %}
+{% block page_title %}Category-Specific Tax Rules{% endblock %}
+{% block page_subtitle %}Configure distinct tax rates per product category for accurate multi-category billing{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Category Tax Rate Configuration</h2>
+      <p class="card-subtitle">Academic example tax rates (0%–100%). Past invoices retain their original tax snapshot.</p>
+    </div>
+    <form method="POST" action="{{ url_for('tax_rules_page') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="reset">
+      <button type="submit" class="btn btn-outline btn-sm">Reset Default Tax Rates</button>
+    </form>
+  </div>
+
+  <form method="POST" action="{{ url_for('tax_rules_page') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="update">
+
+    <div tabindex="0" role="region" aria-labelledby="tax-rules-caption" class="table-wrapper responsive-stack">
+      <table>
+        <caption id="tax-rules-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Tax rate by product category</caption>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Tax Rate (%)</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in tax_rules %}
+          <tr>
+            <th data-label="Category"><span class="badge badge-blue">{{ rule.category }}</span></th>
+            <td data-label="Tax Rate (%)">
+              <input
+                type="number"
+                name="tax_rate_{{ rule.id }}"
+                value="{{ "%.2f"|format(rule.tax_rate) }}"
+                step="0.01"
+                min="0"
+                max="100"
+                aria-label="Tax rate percentage for {{ rule.category }}"
+                required
+                style="max-inline-size: 150px;"
+              >
+            </td>
+            <td data-label="Description">
+              <input
+                type="text"
+                name="description_{{ rule.id }}"
+                value="{{ rule.description }}"
+                aria-label="Description for {{ rule.category }}"
+              >
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="topbar-actions" style="margin-block-start: 1.25rem;">
+      <button type="submit" class="btn btn-primary">Save Category Tax Rules</button>
+      <a href="{{ url_for('billing_counter_page') }}" class="btn btn-outline">Test on Billing Counter</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

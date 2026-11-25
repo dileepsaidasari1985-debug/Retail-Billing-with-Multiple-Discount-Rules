@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block title %}Billing Counter{% endblock %}
+{% block page_title %}POS Billing Counter &amp; Shopping Cart{% endblock %}
+{% block page_subtitle %}Select multiple products, enforce stock limits, apply threshold discounts, concession cap, and category taxes{% endblock %}
+
+{% block content %}
+<div class="pos-layout">
+  <!-- Left Panel: Product Selection -->
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Select Products</h2>
+        <p class="card-subtitle">Search by product name or code and add quantities to the bill</p>
+      </div>
+    </div>
+
+    <search>
+      <form method="GET" action="{{ url_for('billing_counter_page') }}" class="filter-bar" style="margin-block-end: 1rem;">
+        <div class="field" style="flex: 1 1 200px;">
+          <label for="pos-search">Search Product</label>
+          <input type="search" id="pos-search" name="q" value="{{ search }}" placeholder="Name or code (e.g., ELE-202)">
+        </div>
+        <div class="field" style="flex: 0 1 170px;">
+          <label for="pos-category">Category</label>
+          <select id="pos-category" name="category">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+              <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="topbar-actions">
+          <button type="submit" class="btn btn-navy btn-sm">Filter</button>
+          <a href="{{ url_for('billing_counter_page') }}" class="btn btn-outline btn-sm">Reset</a>
+        </div>
+      </form>
+    </search>
+
+    {% if products %}
+    <div tabindex="0" role="region" aria-labelledby="pos-catalog-caption" class="table-wrapper responsive-stack" style="max-block-size: 620px;">
+      <table>
+        <caption id="pos-catalog-caption" class="card-subtitle" style="padding: 0.55rem 0.85rem; text-align: start;">Available products for billing</caption>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Category / Tax</th>
+            <th class="num">Price</th>
+            <th class="num">Stock</th>
+            <th>Add to Cart</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          {% set in_cart = cart_quantities.get(p.id, 0) %}
+          {% set remaining = p.available_stock - in_cart %}
+          <tr>
+            <th data-label="Product">
+              <div>{{ p.product_name }}</div>
+              <div class="field-hint">{{ p.product_code }}{% if not p.discount_eligible %} • No Discount{% endif %}</div>
+            </th>
+            <td data-label="Category / Tax">
+              <span class="badge badge-blue">{{ p.category }}</span>
+              <span class="field-hint">{{ "%.1f"|format(tax_map.get(p.category, 0.0)) }}%</span>
+            </td>
+            <td class="num" data-label="Price"><strong>{{ format_inr(p.unit_price) }}</strong></td>
+            <td class="num" data-label="Stock">
+              {% if p.available_stock <= 0 %}
+                <span class="badge badge-red">0</span>
+              {% else %}
+                <span class="badge {% if remaining <= 0 %}badge-orange{% else %}badge-green{% endif %}">
+                  {{ p.available_stock }}{% if in_cart > 0 %} ({{ remaining }} left){% endif %}
+                </span>
+              {% endif %}
+            </td>
+            <td data-label="Add to Cart">
+              {% if p.available_stock > 0 and remaining > 0 %}
+              <form method="POST" action="{{ url_for('cart_add_route') }}" class="qty-control">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="product_id" value="{{ p.id }}">
+                <input type="hidden" name="q" value="{{ search }}">
+                <input type="hidden" name="category" value="{{ selected_category }}">
+                <input
+                  type="number"
+                  name="quantity"
+                  value="1"
+                  min="1"
+                  max="{{ remaining }}"
+                  aria-label="Quantity for {{ p.product_name }}"
+                  style="inline-size: 68px; min-block-size: 36px; padding: 0.25rem 0.45rem;"
+                >
+                <button type="submit" class="btn btn-primary btn-sm">+ Add</button>
+              </form>
+              {% elif p.available_stock > 0 %}
+                <span class="badge badge-orange">Max in Cart</span>
+              {% else %}
+                <span class="badge badge-red">Out of Stock</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="card-subtitle">No matching products found.</p>
+    {% endif %}
+  </section>
+
+  <!-- Right Panel: Active Shopping Cart & Python Calculation Breakdown -->
+  <aside class="card" aria-label="Shopping cart and bill calculation">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Current Bill &amp; Cart</h2>
+        <p class="card-subtitle">{{ bill.total_items_count }} item(s), {{ bill.total_units }} total unit(s)</p>
+      </div>
+      {% if bill.line_items %}
+      <form method="POST" action="{{ url_for('cart_clear_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger btn-sm">Clear Cart</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- One-Click Demo Presets for Quick Assignment Walkthrough -->
+    <div class="topbar-actions" style="margin-block-end: 0.9rem;">
+      <form method="POST" action="{{ url_for('load_demo_basket_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="preset" value="tier5_demo">
+        <button type="submit" class="btn btn-outline btn-sm">Demo: 5% Discount Basket</button>
+      </form>
+      <form method="POST" action="{{ url_for('load_demo_basket_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="preset" value="cap_demo">
+        <button type="submit" class="btn btn-orange btn-sm">Demo: 15% + Concession Cap</button>
+      </form>
+    </div>
+
+    {% if bill.line_items %}
+    <!-- Next Discount Tier Progress Nudge -->
+    <div class="nudge-card {% if not bill.discount_nudge.has_next %}is-unlocked{% endif %}">
+      <div class="nudge-text">{{ bill.discount_nudge.message }}</div>
+      <div class="progress-track" aria-hidden="true">
+        <div class="progress-fill" style="inline-size: {{ bill.discount_nudge.progress_percent }}%;"></div>
+      </div>
+    </div>
+    <div tabindex="0" role="region" aria-labelledby="cart-items-caption" class="table-wrapper" style="margin-block-end: 1rem;">
+      <table>
+        <caption id="cart-items-caption" class="card-subtitle" style="padding: 0.45rem 0.75rem; text-align: start;">Cart line items</caption>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th class="num">Sub</th>
+            <th class="num">Tax</th>
+            <th class="num">Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in bill.line_items %}
+          <tr>
+            <th>
+              <div>{{ item.product_name }}</div>
+              <div class="field-hint">{{ format_inr(item.unit_price) }} × {{ item.quantity }} • {{ item.category }} ({{ "%.0f"|format(item.tax_rate) }}%)</div>
+            </th>
+            <td>
+              <div class="qty-control">
+                <form method="POST" action="{{ url_for('cart_update_route') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="product_id" value="{{ item.product_id }}">
+                  <input type="hidden" name="action" value="dec">
+                  <button type="submit" class="qty-pill-btn" aria-label="Decrease quantity of {{ item.product_name }}">−</button>
+                </form>
+                <span aria-label="Current quantity">{{ item.quantity }}</span>
+                <form method="POST" action="{{ url_for('cart_update_route') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="product_id" value="{{ item.product_id }}">
+                  <input type="hidden" name="action" value="inc">
+                  <button type="submit" class="qty-pill-btn" aria-label="Increase quantity of {{ item.product_name }}" {% if item.quantity >= item.available_stock %}disabled{% endif %}>+</button>
+                </form>
+              </div>
+            </td>
+            <td class="num">{{ format_inr(item.line_subtotal) }}</td>
+            <td class="num">{{ format_inr(item.tax_amount) }}</td>
+            <td class="num"><strong>{{ format_inr(item.line_total) }}</strong></td>
+            <td>
+              <form method="POST" action="{{ url_for('cart_remove_route') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="product_id" value="{{ item.product_id }}">
+                <button type="submit" class="btn btn-danger btn-sm" aria-label="Remove {{ item.product_name }}">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Category-wise Tax Breakdown -->
+    <div style="margin-block-end: 1rem;">
+      <h3 class="card-title" style="font-size: 0.92rem; margin-block-end: 0.45rem;">Category-Specific Tax Summary</h3>
+      <div tabindex="0" role="region" aria-label="Category tax breakdown" class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th class="num">Rate</th>
+              <th class="num">Taxable</th>
+              <th class="num">Tax</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat, rate, sub, disc, taxable, tax_amt, cat_tot in bill.category_summary %}
+            <tr>
+              <th>{{ cat }}</th>
+              <td class="num">{{ "%.1f"|format(rate) }}%</td>
+              <td class="num">{{ format_inr(taxable) }}</td>
+              <td class="num">{{ format_inr(tax_amt) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Calculation Sequence Breakdown -->
+    <div class="summary-box" style="margin-block-end: 1rem;">
+      <div class="summary-row">
+        <span>Purchase Subtotal</span>
+        <strong>{{ format_inr(bill.purchase_subtotal) }}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Discount-Eligible Subtotal</span>
+        <span>{{ format_inr(bill.eligible_subtotal) }}</span>
+      </div>
+      <div class="summary-row is-discount">
+        <span>Eligible Threshold Discount ({{ "%.1f"|format(bill.discount_percent) }}%)</span>
+        <span>{{ format_inr(bill.eligible_discount) }}</span>
+      </div>
+      <div class="summary-row">
+        <span>Maximum Concession Limit</span>
+        <span>{{ format_inr(bill.max_concession_limit) }}</span>
+      </div>
+      <div class="summary-row is-savings">
+        <span>
+          Final Discount Applied
+          {% if bill.concession_capped %}<span class="badge badge-orange">Capped</span>{% endif %}
+        </span>
+        <span>−{{ format_inr(bill.final_discount) }}</span>
+      </div>
+      <div class="summary-row">
+        <span>Taxable Amount (Subtotal − Discount)</span>
+        <strong>{{ format_inr(bill.taxable_amount) }}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Total Category Taxes</span>
+        <strong>+{{ format_inr(bill.total_tax) }}</strong>
+      </div>
+      <div class="summary-row is-total">
+        <span>Final Payable Amount</span>
+        <span>{{ format_inr(bill.final_payable) }}</span>
+      </div>
+    </div>
+
+    <form id="checkout-form" method="POST" action="{{ url_for('billing_checkout_route') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="checkout_nonce" value="{{ checkout_nonce }}">
+      <div class="field" style="margin-block-end: 0.85rem;">
+        <label for="customer_name">Customer Name (Optional)</label>
+        <input type="text" id="customer_name" name="customer_name" placeholder="Walk-in Customer" maxlength="80">
+      </div>
+
+      <fieldset class="payment-fieldset">
+        <legend>Payment Mode</legend>
+        <div class="radio-pills">
+          {% for mode in payment_modes %}
+          <label class="radio-pill">
+            <input type="radio" name="payment_mode" value="{{ mode }}" {% if mode == 'Cash' %}checked{% endif %}>
+            <span>{{ mode }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div id="cash-tendered-panel" class="field" style="margin-block-end: 0.95rem;">
+        <label for="cash_tendered">Cash Tendered (₹) — Optional for Change Calculation</label>
+        <input
+          type="number"
+          id="cash_tendered"
+          name="cash_tendered"
+          step="0.01"
+          min="0"
+          data-payable="{{ '%.2f'|format(bill.final_payable) }}"
+          placeholder="Leave blank for exact {{ '%.2f'|format(bill.final_payable) }}"
+        >
+        <div id="cash-change-output" class="cash-change-preview" aria-live="polite"></div>
+      </div>
+
+      <button type="submit" class="btn btn-green btn-block">Generate Itemized Invoice ({{ format_inr(bill.final_payable) }})</button>
+    </form>
+    {% else %}
+    <div class="summary-box">
+      <p style="margin: 0; color: var(--text-muted);">Your cart is empty. Add products from the left table to calculate threshold discounts, concession limits, and category-specific taxes.</p>
+    </div>
+
+    <div style="margin-block-start: 1rem;">
+      <h3 class="card-title" style="font-size: 0.92rem; margin-block-end: 0.45rem;">Active Threshold Discount Tiers</h3>
+      <ul style="margin: 0; padding-inline-start: 1.2rem; color: var(--text-muted); font-size: 0.88rem;">
+        {% for rule in discount_rules %}
+          <li>{{ rule.rule_label }}</li>
+        {% endfor %}
+      </ul>
+      <p class="field-hint" style="margin-block-start: 0.5rem;">Maximum discount concession per invoice: <strong>{{ format_inr(store_settings.max_concession_limit) }}</strong></p>
+    </div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

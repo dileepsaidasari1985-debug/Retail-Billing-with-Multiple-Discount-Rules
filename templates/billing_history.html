@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Billing History{% endblock %}
+{% block page_title %}Billing History &amp; Saved Invoices{% endblock %}
+{% block page_subtitle %}Search by invoice number or customer name, filter by date, sort by bill total, and print receipts{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Search &amp; Filter Invoices</h2>
+      <p class="card-subtitle">{{ invoices|length }} invoice(s) found in SQLite</p>
+    </div>
+    <div class="topbar-actions">
+      <a href="{{ url_for('reports_csv_route', type='invoices') }}" class="btn btn-green btn-sm">Download Invoices CSV</a>
+      <a href="{{ url_for('billing_counter_page') }}" class="btn btn-primary btn-sm">+ New Invoice</a>
+    </div>
+  </div>
+
+  <search>
+    <form method="GET" action="{{ url_for('billing_history_page') }}" class="filter-bar">
+      <div class="field" style="flex: 1 1 220px;">
+        <label for="hist-search">Invoice # or Customer Name</label>
+        <input type="search" id="hist-search" name="q" value="{{ search }}" placeholder="e.g., INV-2026 or Aarav">
+      </div>
+      <div class="field" style="flex: 0 1 180px;">
+        <label for="hist-date">Filter by Date</label>
+        <input type="date" id="hist-date" name="date" value="{{ filter_date }}">
+      </div>
+      <div class="field" style="flex: 0 1 200px;">
+        <label for="hist-sort">Sort Order</label>
+        <select id="hist-sort" name="sort">
+          <option value="newest" {% if sort_by == 'newest' %}selected{% endif %}>Newest First</option>
+          <option value="oldest" {% if sort_by == 'oldest' %}selected{% endif %}>Oldest First</option>
+          <option value="amount_desc" {% if sort_by == 'amount_desc' %}selected{% endif %}>Highest Total Amount</option>
+          <option value="amount_asc" {% if sort_by == 'amount_asc' %}selected{% endif %}>Lowest Total Amount</option>
+        </select>
+      </div>
+      <div class="topbar-actions">
+        <button type="submit" class="btn btn-navy">Search</button>
+        <a href="{{ url_for('billing_history_page') }}" class="btn btn-outline">Reset</a>
+      </div>
+    </form>
+  </search>
+</section>
+
+<section class="card">
+  {% if invoices %}
+  <div tabindex="0" role="region" aria-labelledby="history-table-caption" class="table-wrapper responsive-stack">
+    <table>
+      <caption id="history-table-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Complete retail billing history</caption>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Date &amp; Time</th>
+          <th>Customer Name</th>
+          <th>Payment</th>
+          <th class="num">Items (Units)</th>
+          <th class="num">Subtotal</th>
+          <th class="num">Discount</th>
+          <th class="num">Category Tax</th>
+          <th class="num">Final Payable</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <th data-label="Invoice #"><a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></th>
+          <td data-label="Date &amp; Time">{{ inv.invoice_datetime }}</td>
+          <td data-label="Customer">{{ inv.customer_name }}</td>
+          <td data-label="Payment"><span class="badge badge-navy">{{ inv.payment_mode or 'Cash' }}</span></td>
+          <td class="num" data-label="Items (Units)">{{ inv.total_items }} ({{ inv.total_units }})</td>
+          <td class="num" data-label="Subtotal">{{ format_inr(inv.purchase_subtotal) }}</td>
+          <td class="num" data-label="Discount">
+            <span class="badge badge-green">−{{ format_inr(inv.final_discount) }}</span>
+            {% if inv.concession_capped %}<span class="badge badge-orange">Capped</span>{% endif %}
+          </td>
+          <td class="num" data-label="Category Tax">{{ format_inr(inv.total_tax) }}</td>
+          <td class="num" data-label="Final Payable"><strong>{{ format_inr(inv.final_payable) }}</strong></td>
+          <td data-label="Actions">
+            <div class="topbar-actions">
+              <a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}" class="btn btn-outline btn-sm">View / Print</a>
+              <a href="{{ url_for('invoice_csv_route', invoice_id=inv.id) }}" class="btn btn-outline btn-sm">CSV</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="card-subtitle">No invoices matched your search or date filter.</p>
+  {% endif %}
+</section>
+{% endblock %}

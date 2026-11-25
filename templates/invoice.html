@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ invoice.invoice_number }}{% endblock %}
+{% block page_title %}Itemized Retail Invoice{% endblock %}
+{% block page_subtitle %}Tax invoice {{ invoice.invoice_number }} • Print-ready and exportable as CSV{% endblock %}
+
+{% block content %}
+<div class="topbar-actions no-print">
+  <button type="button" class="btn btn-primary" data-print-invoice="true">Print Invoice</button>
+  <a href="{{ url_for('invoice_csv_route', invoice_id=invoice.id) }}" class="btn btn-green">Download Invoice CSV</a>
+  <a href="{{ url_for('billing_counter_page') }}" class="btn btn-navy">+ New Bill</a>
+  <a href="{{ url_for('billing_history_page') }}" class="btn btn-outline">Billing History</a>
+</div>
+
+<article class="invoice-sheet" aria-label="Tax Invoice {{ invoice.invoice_number }}">
+  <header class="invoice-banner">
+    <div class="brand-lockup">
+      <img src="{{ url_for('static', filename='images/novamart_logo.svg') }}" alt="Store logo" width="48" height="48">
+      <div>
+        <h2 style="margin: 0; font-size: 1.35rem; color: var(--navy-900);">{{ store_settings.store_name }}</h2>
+        <p style="margin: 0.15rem 0 0; color: var(--text-muted); font-size: 0.9rem;">{{ store_settings.store_address }}</p>
+        <p style="margin: 0.1rem 0 0; color: var(--text-muted); font-size: 0.85rem;">Phone: {{ store_settings.store_phone }} | Tax ID: {{ store_settings.store_gstin }}</p>
+      </div>
+    </div>
+    <div style="text-align: end;">
+      <span class="badge badge-blue">TAX INVOICE</span>
+      <div style="font-size: 1.25rem; font-weight: 800; color: var(--navy-900); margin-block-start: 0.3rem;">{{ invoice.invoice_number }}</div>
+      <div class="field-hint">Generated: {{ invoice.invoice_datetime }}</div>
+    </div>
+  </header>
+
+  <section class="invoice-meta-grid" aria-label="Invoice metadata">
+    <div>
+      <div class="kpi-label">Billed To</div>
+      <div style="font-weight: 700; color: var(--navy-900);">{{ invoice.customer_name }}</div>
+    </div>
+    <div>
+      <div class="kpi-label">Items / Units</div>
+      <div style="font-weight: 700;">{{ invoice.total_items }} product(s) • {{ invoice.total_units }} unit(s)</div>
+    </div>
+    <div>
+      <div class="kpi-label">Applied Discount Tier</div>
+      <div style="font-weight: 700; color: var(--orange-700);">
+        {{ "%.1f"|format(invoice.discount_percent) }}%
+        {% if invoice.concession_capped %}
+          (Capped at {{ format_inr(invoice.max_concession_limit) }})
+        {% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="kpi-label">Payment Mode</div>
+      <div style="font-weight: 700;">
+        {{ invoice.payment_mode or 'Cash' }}
+        {% if invoice.payment_mode == 'Cash' and invoice.change_due > 0 %}
+          <div class="field-hint">Tendered: {{ format_inr(invoice.cash_tendered) }} • Change: {{ format_inr(invoice.change_due) }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="kpi-label">Final Payable</div>
+      <div style="font-weight: 800; font-size: 1.15rem; color: var(--green-700);">{{ format_inr(invoice.final_payable) }}</div>
+    </div>
+  </section>
+
+  <!-- Itemized Line Items -->
+  <section>
+    <h3 class="card-title" style="margin-block-end: 0.65rem;">Itemized Products Breakdown</h3>
+    <div tabindex="0" role="region" aria-labelledby="inv-items-caption" class="table-wrapper responsive-stack">
+      <table>
+        <caption id="inv-items-caption" class="card-subtitle" style="padding: 0.5rem 0.85rem; text-align: start;">Snapshot of prices, discounts, and category taxes at sale time</caption>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Product Name</th>
+            <th>Category</th>
+            <th class="num">Qty</th>
+            <th class="num">Unit Price</th>
+            <th class="num">Line Subtotal</th>
+            <th class="num">Discount</th>
+            <th class="num">Tax Rate</th>
+            <th class="num">Tax Amt</th>
+            <th class="num">Final Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td data-label="Code"><span class="badge badge-navy">{{ item.product_code }}</span></td>
+            <th data-label="Product Name">
+              {{ item.product_name }}
+              {% if not item.discount_eligible %}<div class="field-hint">Non-discountable item</div>{% endif %}
+            </th>
+            <td data-label="Category">{{ item.category }}</td>
+            <td class="num" data-label="Qty">{{ item.quantity }}</td>
+            <td class="num" data-label="Unit Price">{{ format_inr(item.unit_price) }}</td>
+            <td class="num" data-label="Line Subtotal">{{ format_inr(item.line_subtotal) }}</td>
+            <td class="num" data-label="Discount">−{{ format_inr(item.discount_amount) }}</td>
+            <td class="num" data-label="Tax Rate">{{ "%.1f"|format(item.tax_rate) }}%</td>
+            <td class="num" data-label="Tax Amt">{{ format_inr(item.tax_amount) }}</td>
+            <td class="num" data-label="Final Amount"><strong>{{ format_inr(item.line_total) }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="split-grid">
+    <!-- Category Tax Summary -->
+    <section>
+      <h3 class="card-title" style="margin-block-end: 0.65rem;">Category-Wise Tax Summary</h3>
+      <div tabindex="0" role="region" aria-label="Category tax summary" class="table-wrapper responsive-stack">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th class="num">Subtotal</th>
+              <th class="num">Discount</th>
+              <th class="num">Taxable</th>
+              <th class="num">Rate</th>
+              <th class="num">Tax</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in category_summary %}
+            <tr>
+              <th data-label="Category">{{ cat.category }}</th>
+              <td class="num" data-label="Subtotal">{{ format_inr(cat.subtotal) }}</td>
+              <td class="num" data-label="Discount">−{{ format_inr(cat.discount_amount) }}</td>
+              <td class="num" data-label="Taxable">{{ format_inr(cat.taxable_amount) }}</td>
+              <td class="num" data-label="Rate">{{ "%.1f"|format(cat.tax_rate) }}%</td>
+              <td class="num" data-label="Tax">{{ format_inr(cat.tax_amount) }}</td>
+              <td class="num" data-label="Total"><strong>{{ format_inr(cat.total_with_tax) }}</strong></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Calculation Formula Breakdown -->
+    <section>
+      <h3 class="card-title" style="margin-block-end: 0.65rem;">Final Bill Calculation</h3>
+      <div class="summary-box">
+        <div class="summary-row">
+          <span>1. Product Subtotal</span>
+          <strong>{{ format_inr(invoice.purchase_subtotal) }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>2. Discount-Eligible Subtotal</span>
+          <span>{{ format_inr(invoice.eligible_subtotal) }}</span>
+        </div>
+        <div class="summary-row is-discount">
+          <span>3. Eligible Threshold Discount ({{ "%.1f"|format(invoice.discount_percent) }}%)</span>
+          <span>{{ format_inr(invoice.eligible_discount) }}</span>
+        </div>
+        <div class="summary-row">
+          <span>4. Maximum Concession Limit</span>
+          <span>{{ format_inr(invoice.max_concession_limit) }}</span>
+        </div>
+        <div class="summary-row is-savings">
+          <span>
+            5. Final Discount Applied
+            {% if invoice.concession_capped %}<span class="badge badge-orange">Limit Enforced</span>{% endif %}
+          </span>
+          <span>−{{ format_inr(invoice.final_discount) }}</span>
+        </div>
+        <div class="summary-row">
+          <span>6. Taxable Amount (Subtotal − Discount)</span>
+          <strong>{{ format_inr(invoice.taxable_amount) }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>7. Category Taxes Added</span>
+          <strong>+{{ format_inr(invoice.total_tax) }}</strong>
+        </div>
+        <div class="summary-row is-total">
+          <span>Final Payable (Subtotal − Discount + Tax)</span>
+          <span>{{ format_inr(invoice.final_payable) }}</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Python String Pattern Receipt Preview -->
+  <section class="no-print">
+    <h3 class="card-title" style="margin-block-end: 0.5rem;">Python Pattern Receipt Output</h3>
+    <pre class="receipt-pre">{{ receipt_pattern }}</pre>
+  </section>
+</article>
+{% endblock %}

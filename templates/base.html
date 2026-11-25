@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Dashboard{% endblock %} | {{ store_settings.store_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <!-- Mobile Swipeable Navigation Drawer (native modal <dialog>) -->
+  <dialog class="Drawer" id="mobile-drawer" aria-label="Navigation menu">
+    <div class="Drawer-scroller">
+      <nav class="Drawer-sheet" aria-label="Mobile navigation">
+        <div class="drawer-header">
+          <div class="brand-lockup">
+            <img src="{{ url_for('static', filename='images/novamart_logo.svg') }}" alt="" width="36" height="36">
+            <div>
+              <div class="brand-title">NovaMart POS</div>
+              <div class="brand-sub">Retail Billing System</div>
+            </div>
+          </div>
+          <button type="button" id="drawer-close" class="icon-btn" aria-label="Close navigation menu" autofocus>
+            ✕
+          </button>
+        </div>
+
+        <ul class="nav-list">
+          <li><a href="{{ url_for('dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}is-active{% endif %}">Dashboard</a></li>
+          <li>
+            <a href="{{ url_for('billing_counter_page') }}" class="nav-link {% if active_page == 'billing' %}is-active{% endif %}">
+              <span>Billing Counter</span>
+              {% if cart_units_count > 0 %}<span class="nav-pill">{{ cart_units_count }}</span>{% endif %}
+            </a>
+          </li>
+          <li><a href="{{ url_for('products_page') }}" class="nav-link {% if active_page == 'products' %}is-active{% endif %}">Product Catalog</a></li>
+          <li><a href="{{ url_for('add_product_page') }}" class="nav-link {% if active_page == 'add_product' %}is-active{% endif %}">Add Product</a></li>
+          <li><a href="{{ url_for('billing_history_page') }}" class="nav-link {% if active_page == 'billing_history' %}is-active{% endif %}">Billing History</a></li>
+          <li><a href="{{ url_for('tax_rules_page') }}" class="nav-link {% if active_page == 'tax_rules' %}is-active{% endif %}">Category Tax Rules</a></li>
+          <li><a href="{{ url_for('discount_rules_page') }}" class="nav-link {% if active_page == 'discount_rules' %}is-active{% endif %}">Discount &amp; Limits</a></li>
+          <li><a href="{{ url_for('reports_page') }}" class="nav-link {% if active_page == 'reports' %}is-active{% endif %}">Sales Reports &amp; CSV</a></li>
+        </ul>
+      </nav>
+    </div>
+  </dialog>
+
+  <div class="app-shell">
+    <!-- Desktop Sidebar -->
+    <aside class="sidebar no-print" aria-label="Primary navigation">
+      <div class="sidebar-brand">
+        <img src="{{ url_for('static', filename='images/novamart_logo.svg') }}" alt="NovaMart logo" width="42" height="42">
+        <div>
+          <div class="brand-title">NovaMart POS</div>
+          <div class="brand-sub">Smart Retail Billing</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Sidebar menu">
+        <div class="nav-section-label">Overview</div>
+        <ul class="nav-list">
+          <li><a href="{{ url_for('dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}is-active{% endif %}">Dashboard</a></li>
+          <li><a href="{{ url_for('reports_page') }}" class="nav-link {% if active_page == 'reports' %}is-active{% endif %}">Sales &amp; Discount Reports</a></li>
+        </ul>
+
+        <div class="nav-section-label">POS &amp; Inventory</div>
+        <ul class="nav-list">
+          <li>
+            <a href="{{ url_for('billing_counter_page') }}" class="nav-link {% if active_page == 'billing' %}is-active{% endif %}">
+              <span>Billing Counter</span>
+              {% if cart_units_count > 0 %}<span class="nav-pill">{{ cart_units_count }}</span>{% endif %}
+            </a>
+          </li>
+          <li><a href="{{ url_for('products_page') }}" class="nav-link {% if active_page == 'products' %}is-active{% endif %}">Product Catalog</a></li>
+          <li><a href="{{ url_for('add_product_page') }}" class="nav-link {% if active_page == 'add_product' %}is-active{% endif %}">Add Product</a></li>
+          <li><a href="{{ url_for('billing_history_page') }}" class="nav-link {% if active_page == 'billing_history' %}is-active{% endif %}">Billing History</a></li>
+        </ul>
+
+        <div class="nav-section-label">Rules Engine</div>
+        <ul class="nav-list">
+          <li><a href="{{ url_for('tax_rules_page') }}" class="nav-link {% if active_page == 'tax_rules' %}is-active{% endif %}">Category Tax Rules</a></li>
+          <li><a href="{{ url_for('discount_rules_page') }}" class="nav-link {% if active_page == 'discount_rules' %}is-active{% endif %}">Discount &amp; Concession</a></li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="utility-badge">{{ store_settings.store_name }}</div>
+        <div class="academic-note">Case Study #7 • Max Concession: {{ format_inr(store_settings.max_concession_limit) }}</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Column -->
+    <div class="main-column">
+      <header class="topbar no-print">
+        <div class="topbar-left">
+          <button type="button" id="drawer-open" class="mobile-menu-btn" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobile-drawer">
+            ☰ Menu
+          </button>
+          <div>
+            <h1 class="page-heading">{% block page_title %}Retail Billing Dashboard{% endblock %}</h1>
+            <p class="page-subtitle">{% block page_subtitle %}Multiple discount rules, category taxes, and maximum concession management{% endblock %}</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a href="{{ url_for('billing_counter_page') }}" class="btn btn-primary btn-sm">
+            + Billing Counter{% if cart_units_count > 0 %} ({{ cart_units_count }}){% endif %}
+          </a>
+          <a href="{{ url_for('add_product_page') }}" class="btn btn-outline btn-sm">+ Add Product</a>
+        </div>
+      </header>
+
+      <main id="main-content" class="content-area">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack no-print" role="status" aria-live="polite">
+              {% for category, msg in messages %}
+                <div class="flash-alert flash-{{ category }}">{{ msg }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

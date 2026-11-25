@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Sales &amp; Discount Reports{% endblock %}
+{% block page_title %}Sales, Discount &amp; Tax Reports{% endblock %}
+{% block page_subtitle %}Category-wise revenue, tax collected, customer discount savings, and CSV exports{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Export Reports (Python Built-in CSV Module)</h2>
+      <p class="card-subtitle">Download complete analytical summaries or invoice registers as CSV spreadsheets</p>
+    </div>
+    <div class="topbar-actions">
+      <a href="{{ url_for('reports_csv_route', type='full') }}" class="btn btn-green">Download Full Sales &amp; Tax Report (CSV)</a>
+      <a href="{{ url_for('reports_csv_route', type='invoices') }}" class="btn btn-primary">Download Invoice Register (CSV)</a>
+    </div>
+  </div>
+</section>
+
+<section class="kpi-grid" aria-label="Sales and discount report summary">
+  <article class="kpi-card">
+    <div class="kpi-label">Total Sales</div>
+    <div class="kpi-value">{{ format_inr(stats.total_sales) }}</div>
+    <div class="kpi-meta">{{ stats.total_invoices }} total invoices</div>
+  </article>
+
+  <article class="kpi-card is-orange">
+    <div class="kpi-label">Total Discounts Given</div>
+    <div class="kpi-value">{{ format_inr(stats.total_discounts) }}</div>
+    <div class="kpi-meta">{{ stats.capped_invoices }} invoice(s) capped by limit</div>
+  </article>
+
+  <article class="kpi-card is-green">
+    <div class="kpi-label">Total Tax Collected</div>
+    <div class="kpi-value">{{ format_inr(stats.total_tax) }}</div>
+    <div class="kpi-meta">Across all product categories</div>
+  </article>
+
+  <article class="kpi-card is-navy">
+    <div class="kpi-label">Average Invoice Value</div>
+    <div class="kpi-value">{{ format_inr(stats.avg_invoice) }}</div>
+    <div class="kpi-meta">Highest invoice: {{ format_inr(stats.highest_invoice) }}</div>
+  </article>
+
+  <article class="kpi-card">
+    <div class="kpi-label">Most Frequently Sold</div>
+    <div class="kpi-value" style="font-size: 1.15rem;">
+      {% if stats.top_product %}
+        {{ stats.top_product.product_name }}
+      {% else %}
+        No Sales Yet
+      {% endif %}
+    </div>
+    <div class="kpi-meta">
+      {% if stats.top_product %}
+        {{ stats.top_product.total_qty }} units sold • {{ format_inr(stats.top_product.total_revenue) }}
+      {% else %}
+        Generate an invoice to populate
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Category Revenue &amp; Payment Mode Mix</h2>
+      <p class="card-subtitle">Visual breakdown generated from finalized SQLite transactions</p>
+    </div>
+  </div>
+
+  <div class="split-grid">
+    <div>
+      <h3 class="card-title" style="font-size: 0.95rem; margin-block-end: 0.65rem;">Net Sales by Category</h3>
+      {% if stats.category_breakdown %}
+      <div class="bar-chart-list">
+        {% for cat in stats.category_breakdown %}
+        <div class="bar-row">
+          <div class="bar-row-head">
+            <span><strong>{{ cat.category }}</strong></span>
+            <span>{{ format_inr(cat.net_sales) }}</span>
+          </div>
+          <div class="bar-track" aria-hidden="true">
+            <div class="bar-fill" style="inline-size: {{ cat.share_percent }}%;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="card-subtitle">No category data yet.</p>
+      {% endif %}
+    </div>
+
+    <div>
+      <h3 class="card-title" style="font-size: 0.95rem; margin-block-end: 0.65rem;">Collections by Payment Mode</h3>
+      {% if stats.payment_mode_stats %}
+      <div tabindex="0" role="region" aria-label="Collections by payment mode" class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th class="num">Invoices</th>
+              <th class="num">Collected</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pm in stats.payment_mode_stats %}
+            <tr>
+              <th><span class="badge badge-navy">{{ pm.payment_mode }}</span></th>
+              <td class="num">{{ pm.invoice_count }}</td>
+              <td class="num"><strong>{{ format_inr(pm.total_collected) }}</strong></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="card-subtitle">No payments recorded yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Category-Wise Sales &amp; Tax Collected</h2>
+      <p class="card-subtitle">Aggregated directly from finalized <code>invoice_items</code> records in SQLite</p>
+    </div>
+  </div>
+
+  {% if stats.category_breakdown %}
+  <div tabindex="0" role="region" aria-labelledby="cat-report-caption" class="table-wrapper responsive-stack">
+    <table>
+      <caption id="cat-report-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Sales, discounts, and taxes grouped by product category</caption>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th class="num">Invoices</th>
+          <th class="num">Units Sold</th>
+          <th class="num">Gross Sales</th>
+          <th class="num">Discounts Given</th>
+          <th class="num">Tax Collected</th>
+          <th class="num">Net Sales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cat in stats.category_breakdown %}
+        <tr>
+          <th data-label="Category"><span class="badge badge-blue">{{ cat.category }}</span></th>
+          <td class="num" data-label="Invoices">{{ cat.invoice_count }}</td>
+          <td class="num" data-label="Units Sold">{{ cat.units_sold }}</td>
+          <td class="num" data-label="Gross Sales">{{ format_inr(cat.gross_sales) }}</td>
+          <td class="num" data-label="Discounts Given"><span class="badge badge-green">−{{ format_inr(cat.discounts_given) }}</span></td>
+          <td class="num" data-label="Tax Collected">{{ format_inr(cat.tax_collected) }}</td>
+          <td class="num" data-label="Net Sales"><strong>{{ format_inr(cat.net_sales) }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="card-subtitle">No sales data available yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Invoice-Level Discount &amp; Tax Ledger</h2>
+      <p class="card-subtitle">Click any invoice number to view or print the itemized bill</p>
+    </div>
+  </div>
+
+  {% if invoices %}
+  <div tabindex="0" role="region" aria-labelledby="ledger-caption" class="table-wrapper responsive-stack">
+    <table>
+      <caption id="ledger-caption" class="card-subtitle" style="padding: 0.6rem 0.85rem; text-align: start;">Complete invoice ledger</caption>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Date</th>
+          <th>Customer</th>
+          <th class="num">Subtotal</th>
+          <th class="num">Eligible Disc.</th>
+          <th class="num">Applied Disc.</th>
+          <th class="num">Tax</th>
+          <th class="num">Final Payable</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <th data-label="Invoice #"><a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></th>
+          <td data-label="Date">{{ inv.invoice_date }}</td>
+          <td data-label="Customer">{{ inv.customer_name }}</td>
+          <td class="num" data-label="Subtotal">{{ format_inr(inv.purchase_subtotal) }}</td>
+          <td class="num" data-label="Eligible Disc.">{{ format_inr(inv.eligible_discount) }} ({{ "%.0f"|format(inv.discount_percent) }}%)</td>
+          <td class="num" data-label="Applied Disc.">
+            <span class="badge badge-green">−{{ format_inr(inv.final_discount) }}</span>
+            {% if inv.concession_capped %}<span class="badge badge-orange">Cap</span>{% endif %}
+          </td>
+          <td class="num" data-label="Tax">{{ format_inr(inv.total_tax) }}</td>
+          <td class="num" data-label="Final Payable"><strong>{{ format_inr(inv.final_payable) }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="card-subtitle">No invoices recorded yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
